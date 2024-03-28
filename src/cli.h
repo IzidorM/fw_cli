@@ -37,7 +37,6 @@ struct cli_settings {
 	uint32_t logout_time;
 };
 
-
 char *cli_get_user_input(struct cli *cli, bool hide);
 
 bool cli_add_cmd_common(struct cli *cli, struct cli_cmd_settings cs);
@@ -46,7 +45,5 @@ bool cli_user_add_cmd(struct cli_user *user, struct cli_cmd_settings cs);
 
 struct cli *cli_init(struct cli_settings *s);
 uint32_t cli_run(struct cli *cli, uint32_t time_from_last_run_ms);
-
-void cli_report_output_dirty(struct cli *cli);
 
 #endif

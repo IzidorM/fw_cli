@@ -28,10 +28,6 @@ STATIC void echo_string(struct cli *cli, const char *s)
         {
                 cli->send_char(s[i]);
         }
-
-#ifdef ENABLE_DIRTY_OUTPUT
-	cli->output_dirty = false;
-#endif
 }
 
 STATIC void echo_input_end_sequence(struct cli *cli)
@@ -50,7 +46,7 @@ STATIC bool delete_last_echoed_char(struct cli *cli)
 	return false;
 }
 
-static bool cli_check_command_name_match(struct cli_cmd *cmd,
+STATIC bool cli_check_command_name_match(struct cli_cmd *cmd,
 					 char *cmd_name,
 					 bool search_for_unfinished_cmds)
 {
@@ -79,7 +75,6 @@ STATIC struct cli_cmd *cli_search_command(struct cli *cli,
 					  const uint32_t search_from_index,
 					  uint32_t *found_at_index,
 					  uint32_t *name_match_cnt)
-
 {
 	struct cli_cmd *r = NULL;
 	uint32_t cmd_counter = 0;
@@ -98,13 +93,13 @@ STATIC struct cli_cmd *cli_search_command(struct cli *cli,
 					    cmd_name,
 					    search_for_unfinished_cmds))
 				{
+					r = tmp[i];		
 					if (name_match_cnt)
 					{
 						*name_match_cnt += 1;
 					}
 					else
 					{
-						r = tmp[i];
 						if (found_at_index)
 						{
 							*found_at_index = 
@@ -192,7 +187,7 @@ STATIC bool cli_special_sequence_handler(struct cli *cli, char c)
 	}
 	else if (cli->special_sequence)
 	{
-		cli->special_sequence_buff[cli->ssb_index] = c;
+		//cli->special_sequence_buff[cli->ssb_index] = c;
 		cli->ssb_index += 1;
 		r = true;
 		if (2 == cli->ssb_index)
@@ -203,8 +198,8 @@ STATIC bool cli_special_sequence_handler(struct cli *cli, char c)
 			while (delete_last_echoed_char(cli));
 
 			// up arrow
-			if ((0x5b == cli->special_sequence_buff[0])
-			    && (0x41 == cli->special_sequence_buff[1]))
+			if (//(0x5b == cli->special_sequence_buff[0]) &&
+				(0x41 == c))
 			{
 #ifdef ENABLE_HISTORY_V2
 				cli_history_use_last_cmd(cli);
@@ -222,44 +217,22 @@ STATIC bool cli_special_sequence_handler(struct cli *cli, char c)
 	return r;
 }
 
-void cli_autocomplete(struct cli *cli)
+STATIC void cli_autocomplete(struct cli *cli)
 {
 	cli->input_buff[cli->input_buff_index] = 0;
 	uint32_t cmd_found_at_index = 0;
 	uint32_t search_from_index = 0;
 	uint32_t cmd_match_cnt = 0;
-	struct cli_cmd *cmd = NULL;
-
-	cli_search_command(
-			cli, 
-			cli->input_buff,
-			true, 
-			search_from_index, 
-			NULL,
-			&cmd_match_cnt);
 	
-	if (0 == cmd_match_cnt)
-	{
-		// dont do anything
-	}
-	else if (1 == cmd_match_cnt)
-	{
-		cmd = cli_search_command(
-			cli, 
-			cli->input_buff,
-			true, search_from_index, 
-			NULL,
-			NULL);
-		if (cmd)
-		{
-			while (delete_last_echoed_char(cli));
-			echo_string(cli, cmd->command_name);
-			strncpy(cli->input_buff, cmd->command_name,
-				CLI_COMMAND_BUFF_SIZE);
-			cli->input_buff_index = strlen(cmd->command_name);
-		}
-	}
-	else
+	struct cli_cmd *cmd = cli_search_command(
+		cli, 
+		cli->input_buff,
+		true, 
+		search_from_index, 
+		NULL,
+		&cmd_match_cnt);
+	
+	if (1 < cmd_match_cnt)
 	{
 		cli->send_char('\n');
 		for(;;)
@@ -287,6 +260,23 @@ void cli_autocomplete(struct cli *cli)
 		echo_string(cli, cli->current_user->prompt);
 		cli->input_buff[cli->input_buff_index] = 0;
 		echo_string(cli, cli->input_buff);
+	}
+	else
+	{
+		cmd = cli_search_command(
+			cli, 
+			cli->input_buff,
+			true, search_from_index, 
+			NULL,
+			NULL);
+		if (cmd)
+		{
+			while (delete_last_echoed_char(cli));
+			echo_string(cli, cmd->command_name);
+			strncpy(cli->input_buff, cmd->command_name,
+				CLI_COMMAND_BUFF_SIZE);
+			cli->input_buff_index = strlen(cmd->command_name);
+		}
 	}
 }
 
@@ -319,7 +309,7 @@ STATIC char *cli_handle_new_character(struct cli *cli, char c,
 	{
 
 	}
-        else if( '\b' == c) //backspace
+        else if( '\b' == c || 0x7f == c) //backspace
         {
 		delete_last_echoed_char(cli);
         }
@@ -352,22 +342,6 @@ STATIC char *cli_handle_new_character(struct cli *cli, char c,
 uint32_t cli_run(struct cli *cli, uint32_t time_from_last_run_ms)
 {
 	(void) time_from_last_run_ms;
-
-#ifdef ENABLE_DIRTY_OUTPUT
-	if (cli->output_dirty)
-	{
-		cli->timer_output_dirty += time_from_last_run_ms;
-	
-		if (1000 < cli->timer_output_dirty)
-		{
-			cli->timer_output_dirty = 0;
-			cli->output_dirty = 0;
-	
-			cli_command_received_handler(cli, "");
-			echo_string(cli, cli->current_user->prompt);
-		}
-	}
-#endif
 
 #ifdef ENABLE_AUTOMATIC_LOGOFF
 	cli->logoff_timer_ms += time_from_last_run_ms;
@@ -541,8 +515,7 @@ STATIC void su(struct cli *cli, char *s)
 			return;
 		}
 	}
-
-	echo_string(cli, "User not found\n");
+//	echo_string(cli, "User not found\n");
 }
 
 char *cli_get_user_input(struct cli *cli, bool hide)
@@ -607,13 +580,5 @@ struct cli *cli_init(struct cli_settings *s)
 	return tmp;
 }
 
-void cli_report_output_dirty(struct cli *cli)
-{
-	(void) cli;
 
-#ifdef ENABLE_DIRTY_OUTPUT
-	cli->output_dirty = true;
-	cli->timer_output_dirty = 0;
-#endif
-}
 

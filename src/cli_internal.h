@@ -40,10 +40,6 @@ struct cli {
 	uint32_t logoff_timer_ms;
 #endif
 
-#ifdef ENABLE_DIRTY_OUTPUT
-	uint32_t timer_output_dirty;
-#endif
-
         void *(*malloc)(size_t size);
         bool (*get_char)(char *);
         void (*send_char)(char c);
@@ -56,13 +52,9 @@ struct cli {
 
         char input_end_char;
 
-#ifdef ENABLE_DIRTY_OUTPUT
-	char output_dirty;
-#endif
-
         bool special_sequence;
 	uint8_t ssb_index;
-	char special_sequence_buff[2];
+	//char special_sequence_buff[2];
 
 
 #if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
