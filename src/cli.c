@@ -50,14 +50,39 @@ STATIC bool delete_last_echoed_char(struct cli *cli)
 	return false;
 }
 
+static bool cli_check_command_name_match(struct cli_cmd *cmd,
+					 char *cmd_name,
+					 bool search_for_unfinished_cmds)
+{
+	size_t cmd_size = strlen(cmd_name);
+	if (0 == memcmp(cmd->command_name, 
+			cmd_name, cmd_size))
+	{
+		if (search_for_unfinished_cmds)
+		{
+			return true;
+		}
+		else
+		{
+			if (0 == cmd->command_name[cmd_size])
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 STATIC struct cli_cmd *cli_search_command(struct cli *cli, 
 					  char *cmd_name,
-					  size_t cmd_size,
 					  bool search_for_unfinished_cmds,
-					  bool print_found_cmds)
+					  const uint32_t search_from_index,
+					  uint32_t *found_at_index,
+					  uint32_t *name_match_cnt)
+
 {
 	struct cli_cmd *r = NULL;
-	uint32_t count_found_cmds = 0;
+	uint32_t cmd_counter = 0;
 
         struct cli_cmd *tmp[2] = {&cli->common_cmd_list,
 		cli->current_user->cmd_list};
@@ -66,42 +91,34 @@ STATIC struct cli_cmd *cli_search_command(struct cli *cli,
 	{
 		for (; NULL != tmp[i]; tmp[i] = tmp[i]->next)
 		{
-			if (0 == memcmp(tmp[i]->command_name, 
-					cmd_name, cmd_size))
+			if (search_from_index <= cmd_counter)
 			{
-				if (search_for_unfinished_cmds)
+				if (cli_check_command_name_match(
+					    tmp[i],
+					    cmd_name,
+					    search_for_unfinished_cmds))
 				{
-					r = tmp[i];
-					count_found_cmds += 1;
-
-					if (print_found_cmds)
+					if (name_match_cnt)
 					{
-						if (1 == count_found_cmds)
-						{
-							cli->send_char('\n');
-						}
-						echo_string(cli, 
-							    tmp[i]->command_name);
-						cli->send_char('\n');
+						*name_match_cnt += 1;
 					}
-				}
-				else
-				{
-					if (0 == tmp[i]->command_name[cmd_size])
+					else
 					{
 						r = tmp[i];
-						break;
+						if (found_at_index)
+						{
+							*found_at_index = 
+								cmd_counter;
+						}
+
+						goto exit;
 					}
 				}
 			}
+			cmd_counter += 1;
 		}
 	}
-
-	if ((1 != count_found_cmds) && search_for_unfinished_cmds)
-	{
-		r = NULL;
-	}
-
+exit:
         return r;
 }
 
@@ -152,12 +169,10 @@ STATIC bool cli_history_handler_input_v1(struct cli *cli)
 #endif
 }
 
-
 STATIC void cli_command_received_handler(struct cli *cli, char *input)
 {
 	struct cli_cmd *tmp_command = 
-		cli_search_command(cli, input, strlen(input), 
-				   false, false);
+		cli_search_command(cli, input, false, 0, NULL, NULL);
 
 	if (tmp_command)
 	{
@@ -207,6 +222,74 @@ STATIC bool cli_special_sequence_handler(struct cli *cli, char c)
 	return r;
 }
 
+void cli_autocomplete(struct cli *cli)
+{
+	cli->input_buff[cli->input_buff_index] = 0;
+	uint32_t cmd_found_at_index = 0;
+	uint32_t search_from_index = 0;
+	uint32_t cmd_match_cnt = 0;
+	struct cli_cmd *cmd = NULL;
+
+	cli_search_command(
+			cli, 
+			cli->input_buff,
+			true, 
+			search_from_index, 
+			NULL,
+			&cmd_match_cnt);
+	
+	if (0 == cmd_match_cnt)
+	{
+		// dont do anything
+	}
+	else if (1 == cmd_match_cnt)
+	{
+		cmd = cli_search_command(
+			cli, 
+			cli->input_buff,
+			true, search_from_index, 
+			NULL,
+			NULL);
+		if (cmd)
+		{
+			while (delete_last_echoed_char(cli));
+			echo_string(cli, cmd->command_name);
+			strncpy(cli->input_buff, cmd->command_name,
+				CLI_COMMAND_BUFF_SIZE);
+			cli->input_buff_index = strlen(cmd->command_name);
+		}
+	}
+	else
+	{
+		cli->send_char('\n');
+		for(;;)
+		{
+			cmd = cli_search_command(
+				cli, 
+				cli->input_buff,
+				true, cmd_found_at_index, 
+				&cmd_found_at_index, 
+				NULL);
+			if (cmd)
+			{
+				cmd_found_at_index += 1;
+				echo_string(cli, cmd->command_name);
+				cli->send_char('\n');
+
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		echo_input_end_sequence(cli);
+		echo_string(cli, cli->current_user->prompt);
+		cli->input_buff[cli->input_buff_index] = 0;
+		echo_string(cli, cli->input_buff);
+	}
+}
+
 //#include "debug_io.h"
 STATIC char *cli_handle_new_character(struct cli *cli, char c,
 				      bool hide_echo)
@@ -242,25 +325,7 @@ STATIC char *cli_handle_new_character(struct cli *cli, char c,
         }
         else if( '\t' == c) //tab
         {
-		struct cli_cmd *cmd = cli_search_command(cli, 
-						       cli->input_buff,
-						       cli->input_buff_index,
-						       true, true);
-		if (cmd)
-		{
-			while (delete_last_echoed_char(cli));
-			echo_string(cli, cmd->command_name);
-			strncpy(cli->input_buff, cmd->command_name,
-				CLI_COMMAND_BUFF_SIZE);
-			cli->input_buff_index = strlen(cmd->command_name);
-		}
-		else
-		{
-			echo_input_end_sequence(cli);
-			echo_string(cli, cli->current_user->prompt);
-			cli->input_buff[cli->input_buff_index] = 0;
-			echo_string(cli, cli->input_buff);
-		}
+		cli_autocomplete(cli);
         }
         else if( '\r' == c) //drop character
         {

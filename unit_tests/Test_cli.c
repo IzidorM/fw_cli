@@ -225,12 +225,12 @@ void test_cli_search_command(void)
 
 	struct cli_cmd *t1 = cli_search_command(cli_default, 
 						"f01",
-						strlen("f01"),
-						false, false);
+						false, 0, NULL, NULL);
+
 	//TEST_ASSERT_EQUAL_PTR(&cli_f01, t1);
 
-	t1 = cli_search_command(cli_default, "f02", strlen("f02"),
-				false, false);
+	t1 = cli_search_command(cli_default, "f02", 
+				false, 0, NULL, NULL);
 	TEST_ASSERT_NULL(t1);
 
 //	cli_add_cmd_common(cli_default, &cli_f02);
@@ -242,8 +242,8 @@ void test_cli_search_command(void)
 				   .command_function = cli_function_02,
 			   });
 
-	t1 = cli_search_command(cli_default, "f02", strlen("f02"),
-				false, false);
+	t1 = cli_search_command(cli_default, "f02",
+				false, 0, NULL, NULL);
 	//TEST_ASSERT_EQUAL_PTR(&cli_f02, t1);
 }
 
