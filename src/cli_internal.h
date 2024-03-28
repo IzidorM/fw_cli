@@ -68,10 +68,11 @@ void echo_string(struct cli *cli, const char *s);
 bool delete_last_echoed_char(struct cli *cli);
 struct cli_cmd *cli_search_command(struct cli *cli, 
 				   char *cmd_name,
-				   bool search_for_unfinished_cmds,
-				   uint32_t search_from_index,
+				   bool match_unfinished_cmds,
+				   uint32_t search_after_index,
 				   uint32_t *found_at_index,
 				   uint32_t *name_match_cnt);
+
 
 char *cli_handle_new_character(struct cli *cli, char c, bool hide);
 

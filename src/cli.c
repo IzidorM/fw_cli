@@ -48,13 +48,13 @@ STATIC bool delete_last_echoed_char(struct cli *cli)
 
 STATIC bool cli_check_command_name_match(struct cli_cmd *cmd,
 					 char *cmd_name,
-					 bool search_for_unfinished_cmds)
+					 bool match_unfinished_cmds)
 {
 	size_t cmd_size = strlen(cmd_name);
 	if (0 == memcmp(cmd->command_name, 
 			cmd_name, cmd_size))
 	{
-		if (search_for_unfinished_cmds)
+		if (match_unfinished_cmds)
 		{
 			return true;
 		}
@@ -71,41 +71,49 @@ STATIC bool cli_check_command_name_match(struct cli_cmd *cmd,
 
 STATIC struct cli_cmd *cli_search_command(struct cli *cli, 
 					  char *cmd_name,
-					  bool search_for_unfinished_cmds,
-					  const uint32_t search_from_index,
+					  bool match_unfinished_cmds,
+					  uint32_t search_after_index,
 					  uint32_t *found_at_index,
 					  uint32_t *name_match_cnt)
 {
 	struct cli_cmd *r = NULL;
 	uint32_t cmd_counter = 0;
 
-        struct cli_cmd *tmp[2] = {&cli->common_cmd_list,
+	//put user and common cmd list in an array
+        struct cli_cmd *tmp[2] = {
+		&cli->common_cmd_list,
 		cli->current_user->cmd_list};
 
+	//loop over both cmd lists
 	for (uint32_t i = 0; 2 > i; i++)
 	{
 		for (; NULL != tmp[i]; tmp[i] = tmp[i]->next)
 		{
-			if (search_from_index <= cmd_counter)
+			// skip first N (search_from_index) cmds
+			if (search_after_index <= cmd_counter)
 			{
 				if (cli_check_command_name_match(
 					    tmp[i],
 					    cmd_name,
-					    search_for_unfinished_cmds))
+					    match_unfinished_cmds))
 				{
-					r = tmp[i];		
+					r = tmp[i];
+
+					if (found_at_index)
+					{
+						*found_at_index = 
+							cmd_counter;
+					}
+
 					if (name_match_cnt)
 					{
 						*name_match_cnt += 1;
 					}
 					else
 					{
-						if (found_at_index)
-						{
-							*found_at_index = 
-								cmd_counter;
-						}
-
+						// goto is the most
+						// effective way for 
+						// exiting double loop
 						goto exit;
 					}
 				}
@@ -138,14 +146,22 @@ STATIC void cli_history_forget(struct cli *cli)
 }
 
 #if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
-STATIC void cli_history_use_last_cmd(struct cli *cli)
+//STATIC void cli_history_use_last_cmd(struct cli *cli)
+STATIC void cli_put_cmd_on_prompt(struct cli *cli, const char *name)
 {
-	echo_string(cli, cli->previous_cmd);
-	strncpy(cli->input_buff, 
-		cli->previous_cmd,
+	echo_string(cli, name);
+	strncpy(cli->input_buff, name,
 		CLI_COMMAND_BUFF_SIZE);
 	cli->input_buff_index = strlen(
-		cli->previous_cmd);
+		name);
+
+//	echo_string(cli, cli->previous_cmd);
+//	strncpy(cli->input_buff, 
+//		cli->previous_cmd,
+//		CLI_COMMAND_BUFF_SIZE);
+//	cli->input_buff_index = strlen(
+//		cli->previous_cmd);
+
 }
 #endif
 
@@ -154,7 +170,8 @@ STATIC bool cli_history_handler_input_v1(struct cli *cli)
 #ifdef ENABLE_HISTORY_V1
 	if ((0 == cli->input_buff_index) && (0 != cli->previous_cmd[0]))
 	{
-		cli_history_use_last_cmd(cli);
+		//cli_history_use_last_cmd(cli);
+		cli_put_cmd_on_prompt(cli, cli->previous_cmd);
 		return true;
 	}
 	return false;
@@ -202,7 +219,8 @@ STATIC bool cli_special_sequence_handler(struct cli *cli, char c)
 				(0x41 == c))
 			{
 #ifdef ENABLE_HISTORY_V2
-				cli_history_use_last_cmd(cli);
+				cli_put_cmd_on_prompt(cli, 
+						      cli->previous_cmd);
 #endif
 			}
 			// down arrow 
@@ -248,7 +266,6 @@ STATIC void cli_autocomplete(struct cli *cli)
 				cmd_found_at_index += 1;
 				echo_string(cli, cmd->command_name);
 				cli->send_char('\n');
-
 			}
 			else
 			{
@@ -272,10 +289,13 @@ STATIC void cli_autocomplete(struct cli *cli)
 		if (cmd)
 		{
 			while (delete_last_echoed_char(cli));
-			echo_string(cli, cmd->command_name);
-			strncpy(cli->input_buff, cmd->command_name,
-				CLI_COMMAND_BUFF_SIZE);
-			cli->input_buff_index = strlen(cmd->command_name);
+			cli_put_cmd_on_prompt(cli, cmd->command_name);
+
+//			echo_string(cli, cmd->command_name);
+//			strncpy(cli->input_buff, cmd->command_name,
+//				CLI_COMMAND_BUFF_SIZE);
+//			cli->input_buff_index = strlen(cmd->command_name);
+
 		}
 	}
 }
@@ -339,31 +359,23 @@ STATIC char *cli_handle_new_character(struct cli *cli, char c,
 	return ret;
 }
 
+#ifdef ENABLE_AUTOMATIC_LOGOFF
+#include "cli_automatic_loggoff.c"
+#endif
+
 uint32_t cli_run(struct cli *cli, uint32_t time_from_last_run_ms)
 {
 	(void) time_from_last_run_ms;
 
 #ifdef ENABLE_AUTOMATIC_LOGOFF
-	cli->logoff_timer_ms += time_from_last_run_ms;
-
-	if (cli->logout_time != 0 
-	    && cli->logout_time < cli->logoff_timer_ms 
-	    //guest user cant be loged off
-	    && (cli->current_user != GET_GUEST_USER(cli)))
-	{
-		cli->current_user = GET_GUEST_USER(cli);
-		echo_string(cli, cli->current_user->prompt);
-		cli->logoff_timer_ms = 0;
-
-		cli_history_forget(cli);
-	}
+	cli_logoff_handler(cli, time_from_last_run_ms);
 #endif
 
 	char c;
 	while(cli->get_char(&c))
 	{
 #ifdef ENABLE_AUTOMATIC_LOGOFF
-		cli->logoff_timer_ms = 0;
+		cli_reset_logoff_timer(cli);
 #endif
 		bool hide_echo = false;
 		char *input_received = 
@@ -442,7 +454,8 @@ struct cli_user *cli_add_user(struct cli *cli,
 		return NULL;
 	}
 
-	//tmp cant be NULL by design, because there is always guest user
+	//tmp cant be NULL by design, because there is always 
+	// guest user added when cli is initialized
         struct cli_user *tmp = &cli->users;
 	
         for (; NULL != tmp->next; tmp = tmp->next);
@@ -484,7 +497,7 @@ STATIC void help_cmd(struct cli *cli, char *s)
 	}
 }
 
-STATIC void su(struct cli *cli, char *s)
+STATIC void su_cmd(struct cli *cli, char *s)
 {
         (void) s;
 
@@ -496,26 +509,24 @@ STATIC void su(struct cli *cli, char *s)
 	{
 		if (0 == strcmp(tmp->name, u))
 		{
-			bool select_user = true;
 			if (tmp->password_check)
 			{
 				echo_string(cli, "pass: ");
-				if (!tmp->password_check(
+				if (tmp->password_check(
 					    cli_get_user_input(
 						    cli, true)))
 				{
-					select_user = false;
+					cli->current_user = tmp;
 				}
 			}
-
-			if (select_user)
+			else
 			{
 				cli->current_user = tmp;
 			}
+
 			return;
 		}
 	}
-//	echo_string(cli, "User not found\n");
 }
 
 char *cli_get_user_input(struct cli *cli, bool hide)
@@ -573,10 +584,9 @@ struct cli *cli_init(struct cli_settings *s)
 	cli_add_cmd_common(tmp, (struct cli_cmd_settings) 
 			   {
 				   .command_name = "su",
-				   .command_function = su,
+				   .command_function = su_cmd,
 				   .command_description = "select user"
 			   });
-
 	return tmp;
 }
 
