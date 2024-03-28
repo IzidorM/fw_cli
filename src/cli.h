@@ -34,6 +34,7 @@ struct cli_settings {
         void (*send_char)(char c);
 	char input_end_char;
 	char *prompt_user;
+	uint32_t logout_time;
 };
 
 

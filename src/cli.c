@@ -18,6 +18,10 @@
 #define STATIC static
 #endif
 
+// this is defined just so the code is more understandable
+// in some places :)
+#define GET_GUEST_USER(cli) (&cli->users)
+
 STATIC void echo_string(struct cli *cli, const char *s)
 {
         for (uint32_t i = 0; s[i] != '\0'; i++)
@@ -35,18 +39,25 @@ STATIC void echo_input_end_sequence(struct cli *cli)
 	echo_string(cli, "\r\n");
 }
 
-STATIC void delete_last_echoed_char(struct cli *cli)
+STATIC bool delete_last_echoed_char(struct cli *cli)
 {
 	if (cli->input_buff_index)
 	{
 		cli->input_buff_index -= 1;
 		echo_string(cli, "\b \b");
+		return true;
 	}
+	return false;
 }
 
 STATIC struct cli_cmd *cli_search_command(struct cli *cli, 
-					  char *cmd_name)
+					  char *cmd_name,
+					  size_t cmd_size,
+					  bool search_for_unfinished_cmds,
+					  bool print_found_cmds)
 {
+	struct cli_cmd *r = NULL;
+	uint32_t count_found_cmds = 0;
 
         struct cli_cmd *tmp[2] = {&cli->common_cmd_list,
 		cli->current_user->cmd_list};
@@ -55,88 +66,206 @@ STATIC struct cli_cmd *cli_search_command(struct cli *cli,
 	{
 		for (; NULL != tmp[i]; tmp[i] = tmp[i]->next)
 		{
-			if (0 == strcmp(tmp[i]->command_name, cmd_name))
+			if (0 == memcmp(tmp[i]->command_name, 
+					cmd_name, cmd_size))
 			{
-				return tmp[i];
+				if (search_for_unfinished_cmds)
+				{
+					r = tmp[i];
+					count_found_cmds += 1;
+
+					if (print_found_cmds)
+					{
+						if (1 == count_found_cmds)
+						{
+							cli->send_char('\n');
+						}
+						echo_string(cli, 
+							    tmp[i]->command_name);
+						cli->send_char('\n');
+					}
+				}
+				else
+				{
+					if (0 == tmp[i]->command_name[cmd_size])
+					{
+						r = tmp[i];
+						break;
+					}
+				}
 			}
 		}
 	}
-        return NULL;
+
+	if ((1 != count_found_cmds) && search_for_unfinished_cmds)
+	{
+		r = NULL;
+	}
+
+        return r;
 }
+
+STATIC void cli_history_save_cmd(struct cli *cli, char *input)
+{
+#if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
+		strncpy(cli->previous_cmd, input, 
+			CLI_COMMAND_BUFF_SIZE);
+#else
+		(void) cli;
+		(void) input;
+#endif
+}
+
+STATIC void cli_history_forget(struct cli *cli)
+{
+#if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
+	cli->previous_cmd[0] = 0;
+#else
+	(void) cli;
+#endif
+}
+
+#if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
+STATIC void cli_history_use_last_cmd(struct cli *cli)
+{
+	echo_string(cli, cli->previous_cmd);
+	strncpy(cli->input_buff, 
+		cli->previous_cmd,
+		CLI_COMMAND_BUFF_SIZE);
+	cli->input_buff_index = strlen(
+		cli->previous_cmd);
+}
+#endif
+
+STATIC bool cli_history_handler_input_v1(struct cli *cli)
+{
+#ifdef ENABLE_HISTORY_V1
+	if ((0 == cli->input_buff_index) && (0 != cli->previous_cmd[0]))
+	{
+		cli_history_use_last_cmd(cli);
+		return true;
+	}
+	return false;
+#else
+	(void) cli;
+	return false;
+#endif
+}
+
 
 STATIC void cli_command_received_handler(struct cli *cli, char *input)
 {
 	struct cli_cmd *tmp_command = 
-		cli_search_command(cli, input);
+		cli_search_command(cli, input, strlen(input), 
+				   false, false);
 
 	if (tmp_command)
 	{
-#ifdef ENABLE_HISTORY_V1
-		strncpy(cli->previous_cmd, input, 
-			CLI_COMMAND_BUFF_SIZE);
-#endif
+		cli_history_save_cmd(cli, input);
 		tmp_command->command_function(cli, input);
 	}
 }
 
-STATIC char *cli_handle_new_character(struct cli *cli, char c,
-	bool hide_echo)
+STATIC bool cli_special_sequence_handler(struct cli *cli, char c)
 {
+	bool r = false;
+        //if(0x1b == c && (0 == cli->input_buff_index)) //special sequence start
+	if(0x1b == c)
+	{
+		cli->special_sequence = true;
+		r = true;
+	}
+	else if (cli->special_sequence)
+	{
+		cli->special_sequence_buff[cli->ssb_index] = c;
+		cli->ssb_index += 1;
+		r = true;
+		if (2 == cli->ssb_index)
+		{
+			cli->special_sequence = false;
+			cli->ssb_index = 0;
+
+			while (delete_last_echoed_char(cli));
+
+			// up arrow
+			if ((0x5b == cli->special_sequence_buff[0])
+			    && (0x41 == cli->special_sequence_buff[1]))
+			{
+#ifdef ENABLE_HISTORY_V2
+				cli_history_use_last_cmd(cli);
+#endif
+			}
+			// down arrow 
+//			else if ((0x5b == cli->special_sequence_buff[0])
+//				 && (0x42 == cli->special_sequence_buff[1]))
+//			{
+//			        while (delete_last_echoed_char(cli));
+//			}
+		}
+	}
+
+	return r;
+}
+
+//#include "debug_io.h"
+STATIC char *cli_handle_new_character(struct cli *cli, char c,
+				      bool hide_echo)
+{
+//	dmsg("\n %c 0x%x\n", c, c);
 	char *ret = NULL;
 
         if (cli->input_end_char == c)
 	{
 		cli->input_buff[cli->input_buff_index] = '\0';
-#ifdef ENABLE_HISTORY_V1
-		if ((0 == cli->input_buff_index) && (0 != cli->previous_cmd[0]))
-		{
-			echo_string(cli, cli->previous_cmd);
-			strncpy(cli->input_buff, 
-				cli->previous_cmd,
-				CLI_COMMAND_BUFF_SIZE);
-			cli->input_buff_index = strlen(
-				cli->previous_cmd);
 
+		if (cli_history_handler_input_v1(cli))
+		{
 			ret = NULL;
 		}
 		else
-#endif
 		{
 			ret = cli->input_buff;
 			echo_input_end_sequence(cli);
 			cli->input_buff_index = 0;
 		}
 
-		//cli->special_sequence = false;
-		//cli->ssb_index = 0;
+		cli->special_sequence = false;
+		cli->ssb_index = 0;
         }
-        //else if(0x1b == c && (0 == cli->input_buff_index)) //special sequence start
-	//{
-	//	cli->special_sequence = true;
-	//}
-	//else if (cli->special_sequence)
-	//{
-	//	cli->special_sequence_buff[cli->ssb_index] = c;
-	//	cli->ssb_index += 1;
-	//
-	//	if (2 == cli->ssb_index)
-	//	{
-	//		cli->special_sequence = false;
-	//		cli->ssb_index = 0;
-	//		if ((0x5b == cli->special_sequence_buff[0])
-	//		    && (0x41 == cli->special_sequence_buff[1]))
-	//		{
-	//			echo_string(cli, cli->input_buff);
-	//		}
-	//	}
-	//}
+	else if (cli_special_sequence_handler(cli, c))
+	{
+
+	}
         else if( '\b' == c) //backspace
         {
 		delete_last_echoed_char(cli);
         }
+        else if( '\t' == c) //tab
+        {
+		struct cli_cmd *cmd = cli_search_command(cli, 
+						       cli->input_buff,
+						       cli->input_buff_index,
+						       true, true);
+		if (cmd)
+		{
+			while (delete_last_echoed_char(cli));
+			echo_string(cli, cmd->command_name);
+			strncpy(cli->input_buff, cmd->command_name,
+				CLI_COMMAND_BUFF_SIZE);
+			cli->input_buff_index = strlen(cmd->command_name);
+		}
+		else
+		{
+			echo_input_end_sequence(cli);
+			echo_string(cli, cli->current_user->prompt);
+			cli->input_buff[cli->input_buff_index] = 0;
+			echo_string(cli, cli->input_buff);
+		}
+        }
         else if( '\r' == c) //drop character
         {
-                
+                //TODO: Maybe there is a need for droping more than
+		// one character?
         }
         else if ((cli->input_buff_index + 1) < CLI_COMMAND_BUFF_SIZE)
         {
@@ -176,16 +305,18 @@ uint32_t cli_run(struct cli *cli, uint32_t time_from_last_run_ms)
 #endif
 
 #ifdef ENABLE_AUTOMATIC_LOGOFF
-	cli->logoff_timer += time_from_last_run_ms;
+	cli->logoff_timer_ms += time_from_last_run_ms;
 
-	if (30000 < cli->logoff_timer)
+	if (cli->logout_time != 0 
+	    && cli->logout_time < cli->logoff_timer_ms 
+	    //guest user cant be loged off
+	    && (cli->current_user != GET_GUEST_USER(cli)))
 	{
-		cli->current_user = &cli->users;
+		cli->current_user = GET_GUEST_USER(cli);
 		echo_string(cli, cli->current_user->prompt);
-		cli->logoff_timer = 0;
-#ifdef ENABLE_HISTORY_V1
-		cli->previous_cmd[0] = 0;
-#endif
+		cli->logoff_timer_ms = 0;
+
+		cli_history_forget(cli);
 	}
 #endif
 
@@ -193,7 +324,7 @@ uint32_t cli_run(struct cli *cli, uint32_t time_from_last_run_ms)
 	while(cli->get_char(&c))
 	{
 #ifdef ENABLE_AUTOMATIC_LOGOFF
-		cli->logoff_timer = 0;
+		cli->logoff_timer_ms = 0;
 #endif
 		bool hide_echo = false;
 		char *input_received = 
@@ -209,6 +340,25 @@ uint32_t cli_run(struct cli *cli, uint32_t time_from_last_run_ms)
 	return 0;
 }
 
+STATIC struct cli_cmd *cli_make_new_cmd(struct cli *cli, 
+			     struct cli_cmd_settings cs)
+{
+	struct cli_cmd *tmp = cli->malloc(sizeof(struct cli_cmd));
+	tmp->next = NULL;
+	tmp->command_name = cs.command_name;
+	tmp->command_description = cs.command_description;
+	tmp->command_function = cs.command_function;
+	return tmp;
+}
+
+STATIC void cli_add_cmd_to_list(struct cli_cmd *list,
+				       struct cli_cmd *new)	       
+{
+        struct cli_cmd *tmp = list;
+        for (; NULL != tmp->next; tmp = tmp->next);
+        tmp->next = new;
+}
+
 bool cli_add_cmd_common(struct cli *cli, struct cli_cmd_settings cs)
 {
 	if ((NULL == cli))
@@ -216,19 +366,9 @@ bool cli_add_cmd_common(struct cli *cli, struct cli_cmd_settings cs)
 		return false;
 	}
 
-	// tmp cant be NULL by design (there is always at least 
-	// help command registered there...
-        struct cli_cmd *tmp = &cli->common_cmd_list;
-        
-        for (; NULL != tmp->next; tmp = tmp->next);
+	struct cli_cmd *new = cli_make_new_cmd(cli, cs);
 
-        tmp->next = cli->malloc(sizeof(struct cli_cmd));
-
-	tmp = tmp->next;
-	tmp->next = NULL;
-	tmp->command_name = cs.command_name;
-	tmp->command_description = cs.command_description;
-	tmp->command_function = cs.command_function;
+	cli_add_cmd_to_list(&cli->common_cmd_list, new);
 
 	return true;
 }
@@ -240,29 +380,23 @@ bool cli_user_add_cmd(struct cli_user *user, struct cli_cmd_settings cs)
 		return false;
 	}
 
-	struct cli_cmd *tmp = user->cmd_list;
+	struct cli_cmd *new = cli_make_new_cmd(user->cli, cs);
+
 	if (NULL == user->cmd_list)
 	{
-		user->cmd_list = user->cli->malloc(sizeof(struct cli_cmd));
-		tmp = user->cmd_list;
-		tmp->next = NULL;
+		// first cmd added to users list
+		user->cmd_list = new;
 	}
 	else
 	{
-		for (; NULL != tmp->next; tmp = tmp->next);
-		tmp->next = user->cli->malloc(sizeof(struct cli_cmd));
-		tmp = tmp->next;
+		cli_add_cmd_to_list(user->cmd_list, new);
 	}
-
-	tmp->next = NULL;
-	tmp->command_name = cs.command_name;
-	tmp->command_description = cs.command_description;
-	tmp->command_function = cs.command_function;
 
 	return true;
 }
 
-struct cli_user *cli_add_user(struct cli *cli, struct cli_user_settings us)
+struct cli_user *cli_add_user(struct cli *cli, 
+			      struct cli_user_settings us)
 {
 	if ((NULL == cli))
 	{
@@ -287,7 +421,7 @@ struct cli_user *cli_add_user(struct cli *cli, struct cli_user_settings us)
 	return tmp;
 }
 
-STATIC void help_function(struct cli *cli, char *s)
+STATIC void help_cmd(struct cli *cli, char *s)
 {
         (void) s;
         struct cli_cmd *tmp[2] = {&cli->common_cmd_list,
@@ -302,15 +436,15 @@ STATIC void help_function(struct cli *cli, char *s)
 			if (tmp[i]->command_description)
 			{
 				echo_string(cli, "\t");
-				echo_string(cli, 
-					    tmp[i]->command_description);
+				echo_string(
+					cli, 
+					tmp[i]->command_description);
 				echo_string(cli, "\r\n");
 			}
 		}
 	}
 }
 
-//// log in as root
 STATIC void su(struct cli *cli, char *s)
 {
         (void) s;
@@ -337,9 +471,6 @@ STATIC void su(struct cli *cli, char *s)
 
 			if (select_user)
 			{
-//				echo_string(cli, "selecting user: ");
-//				echo_string(cli, tmp->name);
-//				echo_string(cli, "\n");
 				cli->current_user = tmp;
 			}
 			return;
@@ -351,6 +482,8 @@ STATIC void su(struct cli *cli, char *s)
 
 char *cli_get_user_input(struct cli *cli, bool hide)
 {
+	// TODO: Do we need timeout here?
+	// TODO: Add yield for use in OS
 	char c;
 	for(;;)
 	{
@@ -386,7 +519,7 @@ struct cli *cli_init(struct cli_settings *s)
 	tmp->common_cmd_list.command_name = "help";
 	tmp->common_cmd_list.command_description = 
 		"print out all the commands";
-	tmp->common_cmd_list.command_function = help_function;
+	tmp->common_cmd_list.command_function = help_cmd;
 	tmp->input_end_char = s->input_end_char;
 
 	tmp->users.next = NULL;
@@ -395,8 +528,8 @@ struct cli *cli_init(struct cli_settings *s)
 	tmp->users.cmd_list = NULL;
 	tmp->users.prompt = s->prompt_user;
 	tmp->users.name = "guest";
-
 	tmp->current_user = &tmp->users;
+	tmp->logout_time = s->logout_time;
 
 	// TODO: Check return code of adding SU command
 	cli_add_cmd_common(tmp, (struct cli_cmd_settings) 
@@ -408,7 +541,6 @@ struct cli *cli_init(struct cli_settings *s)
 
 	return tmp;
 }
-
 
 void cli_report_output_dirty(struct cli *cli)
 {

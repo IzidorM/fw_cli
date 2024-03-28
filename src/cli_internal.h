@@ -34,8 +34,10 @@ struct cli_cmd {
 };
 
 struct cli {
+	uint32_t logout_time;
+
 #ifdef ENABLE_AUTOMATIC_LOGOFF
-	uint32_t logoff_timer;
+	uint32_t logoff_timer_ms;
 #endif
 
 #ifdef ENABLE_DIRTY_OUTPUT
@@ -52,30 +54,31 @@ struct cli {
         struct cli_cmd common_cmd_list;
         size_t input_buff_index;
 
+        char input_end_char;
+
 #ifdef ENABLE_DIRTY_OUTPUT
 	char output_dirty;
 #endif
 
-        char input_end_char;
+        bool special_sequence;
+	uint8_t ssb_index;
+	char special_sequence_buff[2];
 
-//        bool special_sequence;
-//	char special_sequence_buff[2];
-//	uint8_t ssb_index;
 
-#ifdef ENABLE_HISTORY_V1
+#if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
         char previous_cmd[CLI_COMMAND_BUFF_SIZE];
 #endif
-
         char input_buff[CLI_COMMAND_BUFF_SIZE];
 };
 
-
-
 #ifdef UNIT_TESTS
 void echo_string(struct cli *cli, const char *s);
-void delete_last_echoed_char(struct cli *cli);
+bool delete_last_echoed_char(struct cli *cli);
 struct cli_cmd *cli_search_command(struct cli *cli, 
-				   char *cmd_name);
+				   char *cmd_name,
+				   size_t cmd_size,
+				   bool search_for_unfinished_cmds,
+				   bool print_found_cmds);
 
 char *cli_handle_new_character(struct cli *cli, char c, bool hide);
 
