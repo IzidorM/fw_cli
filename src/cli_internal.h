@@ -10,12 +10,19 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+#include "cli.h"
+
+#ifdef UNIT_TESTS
+#define STATIC
+#else
+#define STATIC static
+#endif
+
 #ifndef CLI_COMMAND_BUFF_SIZE
 #define CLI_COMMAND_BUFF_SIZE 32
 #endif
 
 struct cli;
-
 struct cli_user {
 	struct cli_user *next;	
 	struct cli *cli;
@@ -34,16 +41,18 @@ struct cli_cmd {
 };
 
 struct cli {
-	uint32_t logout_time;
 
-#ifdef ENABLE_AUTOMATIC_LOGOFF
-	uint32_t logoff_timer_ms;
+#ifdef ENABLE_AUTOMATIC_LOGOUT
+	uint32_t logout_time_ms;
+	uint32_t logout_timer_ms;
 #endif
 
         void *(*malloc)(size_t size);
         bool (*get_char)(char *);
         void (*send_char)(char c);
-
+#ifdef ENABLE_OS_SUPPORT
+	void (*sleep_or_yield)(void);
+#endif	
 	struct cli_user users;
 	struct cli_user *current_user;
 
@@ -56,12 +65,62 @@ struct cli {
 	uint8_t ssb_index;
 	//char special_sequence_buff[2];
 
+#ifdef ENABLE_ARGUMENT_PARSER
+	uint8_t argc;
+#endif
 
 #if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
         char previous_cmd[CLI_COMMAND_BUFF_SIZE];
 #endif
         char input_buff[CLI_COMMAND_BUFF_SIZE];
 };
+
+#ifdef ENABLE_AUTOMATIC_LOGOUT
+
+STATIC void cli_logout_handler(struct cli *cli, 
+			       uint32_t time_from_last_run_ms);
+STATIC void cli_reset_logout_timer(struct cli *cli);
+
+#endif //automatic logout
+
+#ifdef ENABLE_ARGUMENT_PARSER
+STATIC void cli_argumument_parser_reset(struct cli *cli);
+char *cli_argumument_parser_get_next(struct cli *cli, uint32_t argn);
+#endif
+
+#if defined(ENABLE_HISTORY_V1) || defined(ENABLE_HISTORY_V2)
+STATIC void cli_put_cmd_on_prompt(struct cli *cli, const char *name);
+STATIC void cli_history_save_cmd(struct cli *cli, char *input);
+#endif // history common
+
+#if (defined(ENABLE_HISTORY_V1)	      \
+     || defined(ENABLE_HISTORY_V2))	\
+	&& defined(ENABLE_USER_MANAGEMENT)
+STATIC void cli_history_forget(struct cli *cli);
+#endif
+
+
+#if defined(ENABLE_HISTORY_V1)
+STATIC bool cli_history_handler_input_v1(struct cli *cli);
+#endif // history v1
+#if defined(ENABLE_HISTORY_V2)
+STATIC bool cli_special_sequence_handler(struct cli *cli, char c);
+#endif // history v2
+
+#ifdef ENABLE_USER_MANAGEMENT
+bool cli_user_add_cmd(struct cli_user *user, 
+		      struct cli_cmd_settings cs);
+struct cli_user *cli_add_user(struct cli *cli, 
+			      struct cli_user_settings us);
+STATIC void su_cmd(struct cli *cli, char *s);
+STATIC void cli_change_current_user(struct cli *cli, 
+				    struct cli_user *user);
+#endif // user management
+
+#ifdef ENABLE_AUTOCOMPLETE
+STATIC void cli_autocomplete(struct cli *cli);
+#endif
+
 
 #ifdef UNIT_TESTS
 void echo_string(struct cli *cli, const char *s);

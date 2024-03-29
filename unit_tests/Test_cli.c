@@ -85,6 +85,7 @@ void setUp(void)
 		.send_char = send_char_test,
 		.input_end_char = '\n',
 		.prompt_user = "cli>",
+		.logout_time_ms = 0,
 	};
 
 	cli_default = cli_init(&s);
@@ -302,3 +303,57 @@ void test_cli_handle_input(void)
 	// TODO: test delete character
 }
 
+#ifdef ENABLE_ARGUMENT_PARSER
+void test_cli_argument_parser_normal(void)
+{
+	TEST_ASSERT_NOT_NULL(cli_default);
+
+	strcpy(cli_default->input_buff, "test 1 22 lol");
+
+	cli_argumument_parser_reset(cli_default);
+
+	char *arg_01 = cli_argumument_parser_get_next(cli_default, 
+						      0);
+	TEST_ASSERT_EQUAL_STRING("test", arg_01);	
+
+	char *arg_02 = cli_argumument_parser_get_next(cli_default, 
+						      1);
+	TEST_ASSERT_EQUAL_STRING("1", arg_02);
+
+	char *arg_03 = cli_argumument_parser_get_next(cli_default, 
+						      2);
+	TEST_ASSERT_EQUAL_STRING("22", arg_03);
+
+	char *arg_04 = cli_argumument_parser_get_next(cli_default, 
+						      3);
+	TEST_ASSERT_EQUAL_STRING("lol", arg_04);
+
+	char *arg_05 = cli_argumument_parser_get_next(cli_default, 
+						      4);
+	TEST_ASSERT_NULL(arg_05);
+
+}
+
+void test_cli_argument_parser_max_len_cmd(void)
+{
+	TEST_ASSERT_NOT_NULL(cli_default);
+
+	char ref_str[CLI_COMMAND_BUFF_SIZE];
+	memset(ref_str, 'A', CLI_COMMAND_BUFF_SIZE);
+	ref_str[CLI_COMMAND_BUFF_SIZE-1] = 0;
+
+	strcpy(cli_default->input_buff, ref_str);
+
+	cli_argumument_parser_reset(cli_default);
+
+	char *arg_01 = cli_argumument_parser_get_next(cli_default, 
+						      0);
+	TEST_ASSERT_EQUAL_STRING(ref_str, arg_01);	
+
+	char *arg_05 = cli_argumument_parser_get_next(cli_default, 
+						      1);
+	TEST_ASSERT_NULL(arg_05);
+
+}
+
+#endif
