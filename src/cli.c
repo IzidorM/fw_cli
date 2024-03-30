@@ -59,32 +59,6 @@ STATIC bool delete_last_echoed_char(struct cli *cli)
 	return false;
 }
 
-//STATIC bool cli_check_if_command_names_match(struct cli_cmd *cmd01,
-//					 char *cmd02_name,
-//					 bool match_unfinished_cmds)
-//{
-//	// we cant use strcmp here, because if match_unfinished_cmds
-//	// is set, cmd02_name could be a substring of cmd01 name 
-//	size_t cmd_size = strlen(cmd02_name);
-//	if (0 == memcmp(cmd01->command_name, 
-//			cmd02_name, cmd_size))
-//	{
-//		if (match_unfinished_cmds)
-//		{
-//			return true;
-//		}
-//		else
-//		{
-//			if (0 == cmd01->command_name[cmd_size]
-//			    || ' ' == cmd01->command_name[cmd_size])
-//			{
-//				return true;
-//			}
-//		}
-//	}
-//	return false;
-//}
-
 STATIC bool cli_check_if_command_names_match(struct cli_cmd *cmd01,
 					 char *cmd02_name,
 					 bool match_unfinished_cmds)
