@@ -75,6 +75,9 @@ NOTE: A lot of code is shared between modules, thats why when all
 modules are enabled the code size is 1482 and not 1727 as you would
 expect from adding all text size together. Similar is with ram usage...
 
+## Demo
+
+![example of cli usage](./pico_cli_usage.gif)
 
 ## Usage
 
