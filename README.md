@@ -4,7 +4,7 @@ CLI/Shell is a size-optimized, modular command line interface (CLI) designed for
 
 ## Key Features 
 
-- Written in C (c99)
+- Written in C
 - Small and efficient code base
 - Support user management with password protected login
 - support autocompletiton
@@ -16,24 +16,32 @@ CLI/Shell is a size-optimized, modular command line interface (CLI) designed for
 - Released under the BSD license
 
 **Size:**
+All sizes were measured using GCC 13.2 with -Os optimization for Cortex-M4 target.
 
-| modules                         | Text | Data |
+Cli core is essential for cli/shell to operate.
+
+|                          | Text | Data |
 |---------------------------------|------|------|
 | core                            | 545B | 96B  |
+| core + all modules                            | 1482 | 136  |
+
+Every module enabled adds following size to core. Modules are independent. The only dependencies between modules are:
+- user management needs user input module for password input
+- auto logout needs user managment
+
+| module | Text | Data |
+|---------------------------------|------|------|
 | user input (ui)                 | 74B  | 0    |
 | argument parser                 | 110B | 0    |
 | user managment + ui             | 352B | 0    |
 | user manager + ui + auto logout | 401B | 8B   |
-| enter history                   | 64B  | 32B  |
-| arrow history                   | 132B | 32B  |
+| enter history   (v1)                | 64B  | 32B  |
+| arrow history   (v2)                | 132B | 32B  |
 | command autocomplete            | 401B | 8B   |
-|---------------------------------|------|------|
-| full                            | 1482 | 136  |
 
-Compiled with GCC 13.2 using -Os optimization for Cortex-M4 target.
 
 NOTE: A lot of code is shared between modules, thats why when all
-modules are enabled the code size is 1482 and not 2078 as you would
+modules are enabled the code size is 1482 and not 1727 as you would
 expect from adding all text size together. Similar is with ram usage...
 
 
@@ -77,7 +85,7 @@ The minimum working shell (core) can be extended by defining following defines:
 
 Initialize the CLI by providing your own memory allocation
 function. Why and how you should use static runtime memory allocation in
-embeede system is described [here](https://github.com/IzidorM/fw_memory_allocator)
+embedded system is described [here](https://github.com/IzidorM/fw_memory_allocator)
 
 ```c
 #include <stdint.h>
