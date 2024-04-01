@@ -43,7 +43,7 @@ Pressing up arrow will get you last valid command. It only supports 1 command hi
 
 
 ### Command Aautocompletion
-Pressing tab will list all available commands which starts with current user input. If there is only one match, the command name will be autocompletion
+Pressing tab will list all available commands which starts with current user input. If there is only one match, the command name will be autocompleted
 
 ## Size measurement
 
@@ -84,28 +84,28 @@ two header files `cli.h` and `cli_internal.h`.
 
 The minimum working shell (core) can be extended by defining following defines:
 
-** CLI_COMMAND_BUFF_SIZE **
+**CLI_COMMAND_BUFF_SIZE**
   Defines max size of the cli command name, default size is 32bytes
   
-** ENABLE_AUTOCOMPLETE **
+**ENABLE_AUTOCOMPLETE**
   Enables tab autocompletion
 
-** ENABLE_USER_MANAGEMENT **
+**ENABLE_USER_MANAGEMENT**
   Enables support for multiple users and su command
 
-** ENABLE_USER_INPUT_REQUEST **
+**ENABLE_USER_INPUT_REQUEST**
   Enables support for asking user for additional input during command execution
 
-** ENABLE_AUTOMATIC_LOGOUT **
+**ENABLE_AUTOMATIC_LOGOUT**
   Enables automatic logoff after user predefined time is passed. This needs ENABLE_USER_MANAGEMENT enabled
 
-** ENABLE_ARGUMENT_PARSER **
+**ENABLE_ARGUMENT_PARSER**
   Enables argument parsing for commands
 
-** ENABLE_HISTORY_V1 **
+**ENABLE_HISTORY_V1**
   Enables enter history
 
-** ENABLE_HISTORY_V2 **
+**ENABLE_HISTORY_V2**
   Enables arrow history
 
 ### Initialization
