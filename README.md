@@ -53,8 +53,8 @@ Cli core is essential for cli/shell to operate.
 
 |                    | Text | Data |
 |--------------------|------|------|
-| core               | 545B | 96B  |
-| core + all modules | 1482 | 136  |
+| core               | 545 Bytes | 96 Bytes  |
+| core + all modules | 1482 Bytes | 136 Bytes  |
 
 Every module enabled adds following size to core. Modules are independent. The only dependencies between modules are:
 - user management needs user input module for password input
@@ -62,13 +62,13 @@ Every module enabled adds following size to core. Modules are independent. The o
 
 | module                          | Text | Data |
 |---------------------------------|------|------|
-| user input (ui)                 | 74B  | 0    |
-| argument parser                 | 110B | 0    |
-| user managment + ui             | 352B | 0    |
-| user manager + ui + auto logout | 401B | 8B   |
-| enter history   (v1)            | 64B  | 32B  |
-| arrow history   (v2)            | 132B | 32B  |
-| command autocomplet             | 401B | 8B   |
+| user input (ui)                 | 74 Bytes  | 0    |
+| argument parser                 | 110 Bytes | 0    |
+| user managment + ui             | 352 Bytes | 0    |
+| user manager + ui + auto logout | 401 Bytes | 8 Bytes   |
+| enter history   (v1)            | 64 Bytes  | 32 Bytes  |
+| arrow history   (v2)            | 132 Bytes | 32 Bytes  |
+| command autocomplet             | 401 Bytes | 8 Bytes   |
 
 
 NOTE: A lot of code is shared between modules, thats why when all
