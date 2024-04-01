@@ -77,7 +77,7 @@ expect from adding all text size together. Similar is with ram usage...
 
 ## Demo
 
-![example of cli usage](./pico_cli_usage.gif)
+![example of cli usage](./cli_showcase_demo_v1.gif)
 
 ## Usage
 
