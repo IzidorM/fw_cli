@@ -239,5 +239,4 @@ void app_cli_commands_add(struct cli *cli)
 
 ## Unit Tests
 
-Unit tests are available in the `unit_test` folder. Before running them, update the path to Unity in the Makefile. The tests should execute smoothly on any Linux system with GCC installed.
-
+Unit tests are available in the unit_test folder. Before running them, update the path to Unity in the Makefile. Unit tests should compile and run on any Linux system with GCC, make and ruby (dependency of Unity) installed.
