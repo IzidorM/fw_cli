@@ -340,9 +340,9 @@ char *cli_get_user_input(struct cli *cli, bool hide)
 			}
 		}
 #ifdef ENABLE_OS_SUPPORT
-		if (cli->yield)
+		if (cli->sleep_or_yield)
 		{
-			cli->yield();
+			cli->sleep_or_yield();
 		}
 #endif
 	} 
@@ -381,7 +381,7 @@ struct cli *cli_init(struct cli_settings *s)
 	tmp->current_user = &tmp->users;
 
 #ifdef ENABLE_OS_SUPPORT
-	tmp->sleep_or_yield = s->sleep_or_yield();
+	tmp->sleep_or_yield = s->sleep_or_yield;
 #endif
 
 #ifdef ENABLE_AUTOMATIC_LOGOUT
